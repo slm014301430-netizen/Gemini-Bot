@@ -4,12 +4,8 @@ const app = express()
 
 // --- WEB SERVER FOR RENDER ---
 const PORT = process.env.PORT || 3000
-app.get('/', (req, res) => {
-  res.send('Bot is running!')
-})
-app.listen(PORT, () => {
-  console.log(`Web server listening on port ${PORT}`)
-})
+app.get('/', (req, res) => res.send('Bot is running!'))
+app.listen(PORT, () => console.log(`Web server listening on port ${PORT}`))
 
 // --- BOT CONFIGURATION ---
 const botOptions = {
@@ -20,6 +16,7 @@ const botOptions = {
 }
 
 let bot
+let moveInterval // Variable to store the timer so we can stop it later
 
 function createBot() {
   bot = mineflayer.createBot(botOptions)
@@ -32,36 +29,44 @@ function createBot() {
 
   bot.on('end', (reason) => {
     console.log(`Bot disconnected: ${reason}`)
+    // STOP the AFK loop so it doesn't crash the code
+    clearInterval(moveInterval)
+    
     console.log('Reconnecting in 30 seconds...')
-    setTimeout(createBot, 30000) // Auto-reconnect
+    setTimeout(createBot, 30000)
   })
 
   bot.on('error', (err) => console.log(`Error: ${err.message}`))
   
-  // Log chat to console so you can see server chat in Render logs
-  bot.on('chat', (username, message) => {
-    if (username === bot.username) return
-    console.log(`${username}: ${message}`)
-  })
+  // Prevent crash on kick
+  bot.on('kicked', console.log)
 }
 
-// --- SOPHISTICATED ANTI-AFK ---
 function startAntiAfk() {
-  // Randomly look around and tap movement keys
-  setInterval(() => {
-    const randomYaw = Math.floor(Math.random() * Math.PI * 2)
-    const randomPitch = (Math.floor(Math.random() * 200) - 100) / 100 // Slight up/down
-    bot.look(randomYaw, randomPitch)
-  }, 3000) // Look around every 3 seconds
+  // Clear any existing interval just in case
+  if (moveInterval) clearInterval(moveInterval)
 
-  setInterval(() => {
-    // Random tiny walk to prevent "idle" status
-    const dir = Math.random() > 0.5 ? 'forward' : 'back'
-    bot.setControlState(dir, true)
-    setTimeout(() => {
-      bot.setControlState(dir, false)
-    }, 500) // Walk for 0.5 seconds
-  }, 10000) // Every 10 seconds
+  moveInterval = setInterval(() => {
+    // Safety check: Only move if bot exists and has a body
+    if (!bot || !bot.entity) return
+
+    try {
+      const randomYaw = Math.floor(Math.random() * Math.PI * 2)
+      const randomPitch = (Math.floor(Math.random() * 200) - 100) / 100 
+      bot.look(randomYaw, randomPitch)
+      
+      const dir = Math.random() > 0.5 ? 'forward' : 'back'
+      bot.setControlState(dir, true)
+      setTimeout(() => bot?.setControlState(dir, false), 500)
+      
+    } catch (err) {
+      console.log('Movement error (ignoring):', err.message)
+    }
+  }, 5000) 
 }
+
+// Global error handlers to prevent "Exit Status 1"
+process.on('uncaughtException', (err) => console.log('Caught exception: ', err))
+process.on('unhandledRejection', (reason) => console.log('Unhandled Rejection: ', reason))
 
 createBot()
