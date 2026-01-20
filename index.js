@@ -16,7 +16,7 @@ const botOptions = {
 }
 
 let bot
-let moveInterval // Variable to store the timer so we can stop it later
+let moveInterval
 
 function createBot() {
   bot = mineflayer.createBot(botOptions)
@@ -27,45 +27,50 @@ function createBot() {
     startAntiAfk()
   })
 
+  // --- RESOURCE PACK HANDLER ---
+  // This part is vital if "Require Resource Pack" is ON in Aternos
+  bot.on('resourcePack', (url, hash) => {
+    console.log('Server requested resource pack. Accepting...')
+    bot.acceptResourcePack()
+  })
+
   bot.on('end', (reason) => {
     console.log(`Bot disconnected: ${reason}`)
-    // STOP the AFK loop so it doesn't crash the code
     clearInterval(moveInterval)
-    
     console.log('Reconnecting in 30 seconds...')
     setTimeout(createBot, 30000)
   })
 
   bot.on('error', (err) => console.log(`Error: ${err.message}`))
-  
-  // Prevent crash on kick
-  bot.on('kicked', console.log)
+  bot.on('kicked', (reason) => console.log(`Kicked for: ${reason}`))
 }
 
 function startAntiAfk() {
-  // Clear any existing interval just in case
   if (moveInterval) clearInterval(moveInterval)
 
   moveInterval = setInterval(() => {
-    // Safety check: Only move if bot exists and has a body
     if (!bot || !bot.entity) return
 
     try {
+      // Randomly look around
       const randomYaw = Math.floor(Math.random() * Math.PI * 2)
       const randomPitch = (Math.floor(Math.random() * 200) - 100) / 100 
       bot.look(randomYaw, randomPitch)
       
+      // Short step forward or back
       const dir = Math.random() > 0.5 ? 'forward' : 'back'
       bot.setControlState(dir, true)
-      setTimeout(() => bot?.setControlState(dir, false), 500)
+      setTimeout(() => {
+        if (bot && bot.setControlState) bot.setControlState(dir, false)
+      }, 500)
       
     } catch (err) {
-      console.log('Movement error (ignoring):', err.message)
+      console.log('AFK Movement skipped (lag):', err.message)
     }
-  }, 5000) 
+  }, 10000) // Runs every 10 seconds
 }
 
-// Global error handlers to prevent "Exit Status 1"
+// Global safety nets
 process.on('uncaughtException', (err) => console.log('Caught exception: ', err))
 process.on('unhandledRejection', (reason) => console.log('Unhandled Rejection: ', reason))
 
